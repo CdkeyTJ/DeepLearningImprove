@@ -27,57 +27,12 @@ class BaseTrainer(object):
         self.optimizer = self.init_optimizer(cfg)
         self.best_acc = -1
 
-        self.scaler = GradScaler()
-
         username = getpass.getuser()
         # init loggers
         self.log_path = os.path.join(cfg.LOG.PREFIX, experiment_name)
         if not os.path.exists(self.log_path):
             os.makedirs(self.log_path)
         self.tf_writer = SummaryWriter(os.path.join(self.log_path, "train.events"))
-
-
-
-    def train_iter(self, data, epoch, train_meters):
-        self.optimizer.zero_grad()
-        train_start_time = time.time()
-        image, target, index = data
-        train_meters["data_time"].update(time.time() - train_start_time)
-
-        image = image.float().cuda(non_blocking=True)
-        target = target.cuda(non_blocking=True)
-
-        # forward with AMP
-        with autocast():
-            preds, losses_dict = self.distiller(image=image, target=target, epoch=epoch)
-            loss = sum([l.mean() for l in losses_dict.values()])
-
-        # backward with GradScaler
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-
-        self.optimizer.step()
-
-        train_meters["training_time"].update(time.time() - train_start_time)
-
-        # collect info
-        batch_size = image.size(0)
-        acc1, acc5 = accuracy(preds, target, topk=(1, 5))
-        train_meters["losses"].update(loss.cpu().detach().numpy().mean(), batch_size)
-        train_meters["top1"].update(acc1[0], batch_size)
-        train_meters["top5"].update(acc5[0], batch_size)
-
-        # print info
-        msg = "Epoch:{}| Time(data):{:.3f}| Time(train):{:.3f}| Loss:{:.4f}| Top-1:{:.3f}| Top-5:{:.3f}".format(
-            epoch,
-            train_meters["data_time"].avg,
-            train_meters["training_time"].avg,
-            train_meters["losses"].avg,
-            train_meters["top1"].avg,
-            train_meters["top5"].avg,
-        )
-        return msg
 
     def init_optimizer(self, cfg):
         if cfg.SOLVER.TYPE == "SGD":
