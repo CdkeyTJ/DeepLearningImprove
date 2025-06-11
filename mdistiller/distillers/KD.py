@@ -20,7 +20,7 @@ def kd_loss(logits_student_in, logits_teacher_in, temperature, logit_stand):
     pred_teacher = F.softmax(logits_teacher / temperature, dim=1)
     loss_kd = F.kl_div(log_pred_student, pred_teacher, reduction="none").sum(1).mean()
 
-    # CDK
+    #CDK
     # loss_kd *= temperature**2
 
     # 每个样本的 KL 散度，不立即平均
