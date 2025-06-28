@@ -8,7 +8,14 @@ def max_logit_based_temperature(logit_s, logit_t):
         temperature, _ = torch.max(torch.maximum(torch.abs(logit_s), torch.abs(logit_t)), dim=1, keepdim=True)
         temperature = (temperature * (1 + torch.sqrt(torch.tensor(3.0)))) / 2
     return temperature
-
+# ZPC 各自算各自的温度
+def max_logit_based_temperature2(logit_s, logit_t):
+    with torch.no_grad():
+        temperature_s, _ = torch.max(torch.abs(logit_s), dim=1, keepdim=True)
+        temperature_s = (temperature_s * (1 + torch.sqrt(torch.tensor(3.0)))) / 2
+        temperature_t, _ = torch.max(torch.abs(logit_t), dim=1, keepdim=True)
+        temperature_t = (temperature_t * (1 + torch.sqrt(torch.tensor(3.0)))) / 2
+    return temperature_s,temperature_t
 
 class Distiller(nn.Module):
     def __init__(self, student, teacher):

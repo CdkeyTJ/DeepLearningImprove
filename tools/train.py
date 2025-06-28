@@ -107,8 +107,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg.merge_from_file(args.cfg)
     cfg.merge_from_list(args.opts)
-    if args.logit_stand and cfg.DISTILLER.TYPE in ['KD','DKD','MLKD','WKD']:
-        cfg.EXPERIMENT.LOGIT_STAND = True
+    #ZPC 修改温度不再是logit标准化专属
+    # if args.logit_stand and cfg.DISTILLER.TYPE in ['KD', 'DKD', 'MLKD', 'WKD']:
+    if cfg.DISTILLER.TYPE in ['KD','DKD','MLKD','WKD']:
+        cfg.EXPERIMENT.LOGIT_STAND = args.logit_stand
         if cfg.DISTILLER.TYPE == 'KD':
             cfg.KD.LOSS.KD_WEIGHT = args.kd_weight
             cfg.KD.TEMPERATURE = args.base_temp

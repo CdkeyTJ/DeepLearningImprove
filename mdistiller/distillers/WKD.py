@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ._base import Distiller, max_logit_based_temperature
+from ._base import Distiller, max_logit_based_temperature2
 from ._common import *
 
 import math
@@ -34,12 +34,14 @@ def wkd_logit_loss(logits_student, logits_teacher, temperature, cost_matrix=None
     logit_stand = True
     logits_student = normalize(logits_student) if logit_stand else logits_student
     logits_teacher = normalize(logits_teacher) if logit_stand else logits_teacher
-
-    # CDK, 修改温度对样本适配
-    temperature = max_logit_based_temperature(logits_student, logits_teacher)
-
-    pred_student = F.softmax(logits_student / temperature, dim=-1).to(torch.float32)
-    pred_teacher = F.softmax(logits_teacher / temperature, dim=-1).to(torch.float32)
+    if temperature <= 0:  # 温度设置小于0时，采取自适应温度
+        # print("自适应温度")
+        temperature_s, temperature_t = max_logit_based_temperature2(logits_student, logits_teacher)
+        pred_student = F.softmax(logits_student / temperature_s, dim=-1).to(torch.float32)
+        pred_teacher = F.softmax(logits_teacher / temperature_t, dim=-1).to(torch.float32)
+    else:  # 使用设定的温度
+        pred_student = F.softmax(logits_student / temperature, dim=-1).to(torch.float32)
+        pred_teacher = F.softmax(logits_teacher / temperature, dim=-1).to(torch.float32)
 
     cost_matrix = F.relu(cost_matrix) + 1e-8
     cost_matrix = cost_matrix.to(pred_student.device)

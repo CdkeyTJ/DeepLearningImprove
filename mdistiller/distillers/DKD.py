@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ._base import Distiller, max_logit_based_temperature
+from ._base import Distiller, max_logit_based_temperature2
 
 def normalize(logit):
     mean = logit.mean(dim=-1, keepdims=True)
@@ -12,33 +12,53 @@ def normalize(logit):
 def dkd_loss(logits_student_in, logits_teacher_in, target, alpha, beta, temperature, logit_stand):
     logits_student = normalize(logits_student_in) if logit_stand else logits_student_in
     logits_teacher = normalize(logits_teacher_in) if logit_stand else logits_teacher_in
-
-    # CDK, 修改温度对样本适配
-    temperature = max_logit_based_temperature(logits_student, logits_teacher)
-
     gt_mask = _get_gt_mask(logits_student, target)
     other_mask = _get_other_mask(logits_student, target)
-    pred_student = F.softmax(logits_student / temperature, dim=1)
-    pred_teacher = F.softmax(logits_teacher / temperature, dim=1)
-    pred_student = cat_mask(pred_student, gt_mask, other_mask)
-    pred_teacher = cat_mask(pred_teacher, gt_mask, other_mask)
-    log_pred_student = torch.log(pred_student)
-    tckd_loss = (
-        F.kl_div(log_pred_student, pred_teacher, size_average=False)
-        * (temperature**2)
-        / target.shape[0]
-    )
-    pred_teacher_part2 = F.softmax(
-        logits_teacher / temperature - 1000.0 * gt_mask, dim=1
-    )
-    log_pred_student_part2 = F.log_softmax(
-        logits_student / temperature - 1000.0 * gt_mask, dim=1
-    )
-    nckd_loss = (
-        F.kl_div(log_pred_student_part2, pred_teacher_part2, size_average=False)
-        * (temperature**2)
-        / target.shape[0]
-    )
+    if temperature <= 0:  # 温度设置小于0时，采取自适应温度
+        temperature_s, temperature_t = max_logit_based_temperature2(logits_student, logits_teacher)
+        pred_student = F.softmax(logits_student / temperature_s, dim=1)
+        pred_teacher = F.softmax(logits_teacher / temperature_t, dim=1)
+        pred_student = cat_mask(pred_student, gt_mask, other_mask)
+        pred_teacher = cat_mask(pred_teacher, gt_mask, other_mask)
+        log_pred_student = torch.log(pred_student)
+        tckd_loss = (
+                F.kl_div(log_pred_student, pred_teacher, size_average=False)
+                * (temperature_s * temperature_t)
+                / target.shape[0]
+        )
+        pred_teacher_part2 = F.softmax(
+            logits_teacher / temperature_t - 1000.0 * gt_mask, dim=1
+        )
+        log_pred_student_part2 = F.log_softmax(
+            logits_student / temperature_s - 1000.0 * gt_mask, dim=1
+        )
+        nckd_loss = (
+                F.kl_div(log_pred_student_part2, pred_teacher_part2, size_average=False)
+                * (temperature_t * temperature_s)
+                / target.shape[0]
+        )
+    else:  # 使用设定的温度
+        pred_student = F.softmax(logits_student / temperature, dim=1)
+        pred_teacher = F.softmax(logits_teacher / temperature, dim=1)
+        pred_student = cat_mask(pred_student, gt_mask, other_mask)
+        pred_teacher = cat_mask(pred_teacher, gt_mask, other_mask)
+        log_pred_student = torch.log(pred_student)
+        tckd_loss = (
+                F.kl_div(log_pred_student, pred_teacher, size_average=False)
+                * (temperature ** 2)
+                / target.shape[0]
+        )
+        pred_teacher_part2 = F.softmax(
+            logits_teacher / temperature - 1000.0 * gt_mask, dim=1
+        )
+        log_pred_student_part2 = F.log_softmax(
+            logits_student / temperature - 1000.0 * gt_mask, dim=1
+        )
+        nckd_loss = (
+                F.kl_div(log_pred_student_part2, pred_teacher_part2, size_average=False)
+                * (temperature ** 2)
+                / target.shape[0]
+        )
     return alpha * tckd_loss + beta * nckd_loss
 
 

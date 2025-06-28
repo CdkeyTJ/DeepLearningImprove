@@ -12,23 +12,21 @@ def normalize(logit):
 def kd_loss(logits_student_in, logits_teacher_in, temperature, logit_stand):
     logits_student = normalize(logits_student_in) if logit_stand else logits_student_in
     logits_teacher = normalize(logits_teacher_in) if logit_stand else logits_teacher_in
-
-    # CDK, 修改温度对样本适配
-    temperature = max_logit_based_temperature(logits_student, logits_teacher)
-
-    log_pred_student = F.log_softmax(logits_student / temperature, dim=1)
-    pred_teacher = F.softmax(logits_teacher / temperature, dim=1)
-    loss_kd = F.kl_div(log_pred_student, pred_teacher, reduction="none").sum(1).mean()
-
-    #CDK
-    # loss_kd *= temperature**2
-
-    # 每个样本的 KL 散度，不立即平均
-    loss_kd_per_sample = F.kl_div(log_pred_student, pred_teacher, reduction="none").sum(1)  # shape: [64]
-
-    # 对每个样本应用温度平方
-    loss_kd = (loss_kd_per_sample * (temperature ** 2)).mean()
-
+    if temperature <= 0:  # 温度设置小于0时，采取自适应温度
+        # print("自适应温度")
+        temperature_s, temperature_t = max_logit_based_temperature2(logits_student, logits_teacher)
+        temperature = max_logit_based_temperature(logits_student, logits_teacher)
+        log_pred_student = F.log_softmax(logits_student / temperature_s, dim=1)
+        pred_teacher = F.softmax(logits_teacher / temperature_t, dim=1)
+        # 每个样本的 KL 散度，不立即平均
+        loss_kd_per_sample = F.kl_div(log_pred_student, pred_teacher, reduction="none").sum(1)  # shape: [64]
+        # 对每个样本应用温度平方，这个温度平方为的是平衡和硬标签之间的贡献，这里就直接使用取最高
+        loss_kd = (loss_kd_per_sample * (temperature_s * temperature_t)).mean()
+    else:  # 使用设定的温度
+        log_pred_student = F.log_softmax(logits_student / temperature, dim=1)
+        pred_teacher = F.softmax(logits_teacher / temperature, dim=1)
+        loss_kd = F.kl_div(log_pred_student, pred_teacher, reduction="none").sum(1).mean()
+        loss_kd *= temperature ** 2
     return loss_kd
 
 
